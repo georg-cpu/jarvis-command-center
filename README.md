@@ -27,8 +27,8 @@ cloudflared tunnel --url http://localhost:8787
 
 ## Реални данни (без ключ, без регистрация)
 - Yahoo Finance chart API, на всеки 60 с: GC=F (XAUUSD*, злато фючърс), EURUSD=X, GBPUSD=X, JPY=X, CHF=X, AUDUSD=X, CAD=X, ^NDX (NAS100), ^DJI (US30), ES=F, CL=F
-- Binance public ticker + klines, на всеки 15 с: BTCUSDT, ETHUSDT (резервен: CoinGecko simple/price)
-- RSS, на всеки 3 мин: CNBC Top News, CNBC Economy, FXStreet, Investing.com, MarketWatch.
+- Крипто на всеки 20 с: Binance public ticker + klines; ако е блокиран (напр. HTTP 418 от IP на Render) -> Yahoo Finance BTC-USD/ETH-USD -> CoinGecko
+- RSS, на всеки 3 мин: CNBC Top News, CNBC Economy, FXStreet, Investing.com (общи, Forex, Commodities), MarketWatch.
   „Важно/извънредно“ = правила с ключови думи; известие (SSE + Notification API) само за нови такива.
 
 Задачите са записи в опашката на таблото (`data/state.json`). Не се изпращат автоматично към ботовете.
