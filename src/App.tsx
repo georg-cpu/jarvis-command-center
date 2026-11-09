@@ -106,7 +106,7 @@ function Markets({ m, big }: { m: any; big?: boolean }) {
   return (
     <div className="markets">
       {srcLine('Yahoo Finance (FX, злато, индекси, фючърси)', m.sources.yahoo)}
-      {srcLine('Binance (крипто)', m.sources.binance)}
+      {srcLine(`Крипто: ${m.sources.binance?.provider || 'Binance'}`, m.sources.binance)}
       {m.order.map((sym: string) => {
         const x = m.items[sym]; if (!x) return null;
         const head = x.g !== prevG ? <div className="mgroup">{x.g}</div> : null; prevG = x.g;

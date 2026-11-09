@@ -250,7 +250,7 @@ function newsView() { return { items: cache.news.items.slice(0, 40), sources: ca
 async function loop(fn, ms, name) {
   for (;;) { try { await fn(); } catch (e) { console.error(name, e.message); } broadcast('state', snapshot()); await new Promise(r => setTimeout(r, ms)); }
 }
-loop(pollCrypto, 15000, 'crypto');
+loop(pollCrypto, 20000, 'crypto');
 loop(pollYahoo, 60000, 'yahoo');
 loop(() => pollNews(x => emit({ type: 'news_alert', demo: false, agentId: '01', severity: 'breaking', msg: x.title, source: x.source, link: x.link, newsTs: x.ts, instruments: x.instruments })), 180000, 'news');
 

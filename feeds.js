@@ -13,12 +13,14 @@ const YAHOO = [
   { g: 'ИНДЕКСИ + ФЮЧЪРСИ', sym: 'ES', y: 'ES=F', d: 2, note: 'E-mini S&P 500 фючърс' },
   { g: 'ИНДЕКСИ + ФЮЧЪРСИ', sym: 'CL', y: 'CL=F', d: 2, note: 'WTI петрол фючърс' },
 ];
-const CRYPTO = [{ g: 'КРИПТО', sym: 'BTCUSD', b: 'BTCUSDT', cg: 'bitcoin', d: 0 }, { g: 'КРИПТО', sym: 'ETHUSD', b: 'ETHUSDT', cg: 'ethereum', d: 2 }];
+const CRYPTO = [{ g: 'КРИПТО', sym: 'BTCUSD', b: 'BTCUSDT', cg: 'bitcoin', y: 'BTC-USD', d: 0 }, { g: 'КРИПТО', sym: 'ETHUSD', b: 'ETHUSDT', cg: 'ethereum', y: 'ETH-USD', d: 2 }];
 const RSS = [
   { name: 'CNBC Top News', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
   { name: 'CNBC Economy', url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html' },
   { name: 'FXStreet', url: 'https://www.fxstreet.com/rss/news' },
   { name: 'Investing.com', url: 'https://www.investing.com/rss/news_25.rss', utcNoZone: true },
+  { name: 'Investing.com Forex', url: 'https://www.investing.com/rss/news_1.rss', utcNoZone: true },
+  { name: 'Investing.com Commodities', url: 'https://www.investing.com/rss/news_11.rss', utcNoZone: true },
   { name: 'MarketWatch', url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories' },
 ];
 const BREAKING = [/\bfed\b/i, /fomc/i, /powell/i, /federal reserve/i, /\becb\b/i, /lagarde/i, /\bcpi\b/i, /\bnfp\b/i, /nonfarm|non-farm/i, /payrolls/i, /rate (decision|cut|hike)/i, /interest rates?\b.*(decision|cut|hike|hold)/i, /\bwar\b/i, /emergency/i, /invasion/i, /missile/i, /\bbank of (england|japan)\b/i];
@@ -62,30 +64,51 @@ export async function pollYahoo() {
   cache.markets.sources.yahoo = { ok: okN > 0, okCount: okN, total: YAHOO.length, last: new Date().toISOString(), error: errs.join('; ') || null };
 }
 
+let binanceDownUntil = 0;
+async function yahooOne(sym) {
+  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=15m&range=1d`)).json();
+  const res = j.chart.result[0]; const m = res.meta;
+  if (m.regularMarketPrice == null) throw new Error('няма цена');
+  return { price: m.regularMarketPrice, prev: m.chartPreviousClose ?? m.previousClose, spark: (res.indicators.quote[0].close || []).filter(x => x != null).slice(-60), time: m.regularMarketTime * 1000 };
+}
 export async function pollCrypto() {
-  try {
-    const syms = encodeURIComponent(JSON.stringify(CRYPTO.map(c => c.b)));
-    const t = await (await get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${syms}`)).json();
-    for (const c of CRYPTO) {
-      const x = t.find(z => z.symbol === c.b);
-      let spark = cache.markets.items[c.sym]?.spark || [];
-      try { const k = await (await get(`https://api.binance.com/api/v3/klines?symbol=${c.b}&interval=15m&limit=60`)).json(); spark = k.map(r => +r[4]); } catch {}
-      cache.markets.items[c.sym] = { ...c, price: +x.lastPrice, prev: +x.prevClosePrice, changePct: +x.priceChangePercent, spark, priceTime: new Date(x.closeTime).toISOString(), fetchedAt: new Date().toISOString(), source: 'Binance (' + c.b + ', 24ч промяна)', ok: true };
-    }
-    cache.markets.sources.binance = { ok: true, last: new Date().toISOString(), error: null };
-  } catch (e) {
-    // fallback CoinGecko
+  const errs = [];
+  // 1) Binance public API (may be blocked from some cloud IPs, e.g. HTTP 418/451)
+  if (Date.now() > binanceDownUntil) {
     try {
-      const j = await (await get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true')).json();
+      const syms = encodeURIComponent(JSON.stringify(CRYPTO.map(c => c.b)));
+      const t = await (await get(`https://api.binance.com/api/v3/ticker/24hr?symbols=${syms}`)).json();
       for (const c of CRYPTO) {
-        const old = cache.markets.items[c.sym] || {};
-        cache.markets.items[c.sym] = { ...c, price: j[c.cg].usd, changePct: j[c.cg].usd_24h_change, spark: old.spark || [], priceTime: new Date().toISOString(), fetchedAt: new Date().toISOString(), source: 'CoinGecko (резервен)', ok: true };
+        const x = t.find(z => z.symbol === c.b);
+        let spark = cache.markets.items[c.sym]?.spark || [];
+        try { const k = await (await get(`https://api.binance.com/api/v3/klines?symbol=${c.b}&interval=15m&limit=60`)).json(); spark = k.map(r => +r[4]); } catch {}
+        cache.markets.items[c.sym] = { ...c, price: +x.lastPrice, prev: +x.prevClosePrice, changePct: +x.priceChangePercent, spark, priceTime: new Date(x.closeTime).toISOString(), fetchedAt: new Date().toISOString(), source: 'Binance (' + c.b + ', 24ч промяна)', ok: true };
       }
-      cache.markets.sources.binance = { ok: true, last: new Date().toISOString(), error: 'Binance: ' + e.message + ' → CoinGecko' };
-    } catch (e2) {
-      cache.markets.sources.binance = { ok: false, last: new Date().toISOString(), error: `Binance: ${e.message}; CoinGecko: ${e2.message}` };
-      for (const c of CRYPTO) if (cache.markets.items[c.sym]) cache.markets.items[c.sym].stale = true; else cache.markets.items[c.sym] = { ...c, ok: false, error: e2.message };
+      cache.markets.sources.binance = { ok: true, provider: 'Binance', last: new Date().toISOString(), error: null };
+      return;
+    } catch (e) { errs.push('Binance: ' + e.message); binanceDownUntil = Date.now() + 10 * 60 * 1000; }
+  } else errs.push('Binance: временно пропуснат след грешка');
+  // 2) Yahoo Finance BTC-USD / ETH-USD
+  try {
+    for (const c of CRYPTO) {
+      const y = await yahooOne(c.y);
+      cache.markets.items[c.sym] = { ...c, price: y.price, prev: y.prev, changePct: y.prev ? ((y.price - y.prev) / y.prev) * 100 : null, spark: y.spark, priceTime: new Date(y.time).toISOString(), fetchedAt: new Date().toISOString(), source: 'Yahoo Finance (' + c.y + ')', ok: true };
     }
+    cache.markets.sources.binance = { ok: true, provider: 'Yahoo Finance', last: new Date().toISOString(), error: errs.join('; ') + ' → резервен Yahoo' };
+    return;
+  } catch (e) { errs.push('Yahoo: ' + e.message); }
+  // 3) CoinGecko
+  try {
+    const j = await (await get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true')).json();
+    for (const c of CRYPTO) {
+      const old = cache.markets.items[c.sym] || {};
+      cache.markets.items[c.sym] = { ...c, price: j[c.cg].usd, changePct: j[c.cg].usd_24h_change, spark: old.spark || [], priceTime: new Date().toISOString(), fetchedAt: new Date().toISOString(), source: 'CoinGecko (резервен, 24ч)', ok: true };
+    }
+    cache.markets.sources.binance = { ok: true, provider: 'CoinGecko', last: new Date().toISOString(), error: errs.join('; ') + ' → резервен CoinGecko' };
+  } catch (e2) {
+    errs.push('CoinGecko: ' + e2.message);
+    cache.markets.sources.binance = { ok: false, last: new Date().toISOString(), error: errs.join('; ') };
+    for (const c of CRYPTO) if (cache.markets.items[c.sym]) cache.markets.items[c.sym].stale = true; else cache.markets.items[c.sym] = { ...c, ok: false, error: e2.message };
   }
 }
 
