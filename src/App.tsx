@@ -1,7 +1,7 @@
 import { HEAD_IMG } from './assets';
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { api, State, Task, Ev, Agent, STATUS_BG } from './api';
+import { api, State, Task, Ev, Agent, STATUS_BG, getKey, clearKey } from './api';
 import { canListen, canSpeak, SR, speak, parseIntent, hasBgVoice } from './voice';
 const Globe = lazy(() => import('./Globe'));
 const Workflow3D = lazy(() => import('./Workflow3D'));
@@ -190,7 +190,7 @@ function Content({ tasks }: { tasks: Task[] }) {
 }
 
 function Social({ tasks, system }: { tasks: Task[]; system: any }) {
-  const q = tasks.filter(t => t.status === 'awaiting_approval').length;
+  const q = tasks.filter(t => ['awaiting_approval'].includes(t.status)).length;
   const ap = tasks.filter(t => t.status === 'approved').length;
   const pub = tasks.filter(t => t.demo && t.status === 'done' && t.stage === 5).length;
   return (
@@ -233,7 +233,7 @@ function Head({ active, alert, reduced }: { active: boolean; alert: boolean; red
 function AgentCard({ a, tasks, demoMode, onOpen, activeIds }: { a: Agent; tasks: Task[]; demoMode: boolean; onOpen: () => void; activeIds: Set<string> }) {
   const mine = tasks.filter(t => t.agentId === a.id && !['done', 'stopped'].includes(t.status));
   const real = mine.filter(t => !t.demo); const demo = mine.filter(t => t.demo);
-  const cur = demo.find(t => t.status === 'running') || demo[0] || real[0];
+  const cur = real.find(t => ['running', 'dispatched', 'blocked'].includes(t.status)) || demo.find(t => t.status === 'running') || real[0] || demo[0];
   const busy = activeIds.has(a.id);
   return (
     <motion.button whileHover={{ y: -4 }} whileTap={{ scale: 0.98 }} className={`agent ${busy ? 'busy' : ''} ${cur?.status === 'failed' ? 'fail' : ''}`} style={{ ['--c' as any]: a.color }} onClick={onOpen}>
@@ -291,20 +291,27 @@ function Gauge({ value, label }: { value: number; label: string }) {
   );
 }
 
-function TaskRow({ t, agents, onErr }: { t: Task; agents: Agent[]; onErr: (s: string) => void }) {
+function TaskRow({ t, agents, onErr, hook }: { t: Task; agents: Agent[]; onErr: (s: string) => void; hook?: boolean }) {
+  const [open, setOpen] = useState(false);
   const a = agents.find(x => x.id === t.agentId);
   const act = (k: any) => api.act(t.id, k).catch(e => onErr(e.message));
-  const can = (k: string) => ({ approve: ['awaiting_approval', 'queued', 'paused'], pause: ['queued', 'running', 'awaiting_approval', 'approved'], resume: ['paused'], stop: ['queued', 'running', 'paused', 'awaiting_approval', 'approved', 'failed'] } as any)[k].includes(t.status);
+  const can = (k: string) => ({ approve: ['pending', 'queued', 'awaiting_approval', 'paused', 'blocked'], pause: ['pending', 'queued', 'running', 'awaiting_approval', 'approved', 'dispatched'], resume: ['paused'], stop: ['pending', 'queued', 'running', 'paused', 'awaiting_approval', 'approved', 'dispatched', 'blocked', 'failed'], redispatch: t.demo || !hook ? [] : ['approved', 'dispatched', 'running', 'blocked'] } as any)[k].includes(t.status);
   return (
     <div className="trow" style={{ ['--c' as any]: a?.color }}>
-      <div className="tmain"><span className="tag-ag">{t.agentId}</span>{t.demo && <Demo />}<b>{t.title.replace('DEMO: ', '')}</b><span className={`st st-${t.status}`}>{STATUS_BG[t.status]}</span></div>
+      <div className="tmain"><span className="tag-ag">{t.agentId}</span>{t.demo && <Demo />}<b>{t.title.replace('DEMO: ', '')}</b><span className={`st st-${t.status}`}>{STATUS_BG[t.status] || t.status}</span>{t.botName && <span className="muted small">· {t.botName}</span>}</div>
+      {t.description && <div className="tsub">{t.description}</div>}
       <div className="tsub">{t.log[t.log.length - 1]?.msg} · {fmtTime(t.updatedAt)}</div>
+      {t.dispatchError && <div className="tsub err">Грешка при изпращане: {t.dispatchError}</div>}
+      {t.result && <div className="tresult"><b>Резултат:</b> {t.result}</div>}
+      {open && <div className="tlog">{t.log.slice().reverse().map((l, i) => <p key={i}><span className="muted">{new Date(l.ts).toLocaleString('bg-BG', { timeZone: 'Europe/Berlin' })}</span> {l.msg}</p>)}</div>}
       <div className="tact">
         {can('approve') && <button className="btn ok" onClick={() => act('approve')}>Одобри</button>}
         {can('pause') && <button className="btn" onClick={() => act('pause')}>Пауза</button>}
         {can('resume') && <button className="btn" onClick={() => act('resume')}>Продължи</button>}
         {can('stop') && <button className="btn bad" onClick={() => act('stop')}>Спри</button>}
+        {can('redispatch') && <button className="btn" onClick={() => act('redispatch')}>Изпрати пак</button>}
         {['done', 'stopped'].includes(t.status) && <button className="btn" onClick={() => api.del(t.id).catch(e => onErr(e.message))}>Изтрий</button>}
+        <button className="btn" onClick={() => setOpen(o => !o)}>{open ? 'Скрий лога' : `Лог (${t.log.length})`}</button>
       </div>
     </div>
   );
@@ -333,7 +340,7 @@ function AgentModal({ a, st, onClose, onErr }: { a: Agent; st: State; onClose: (
     <motion.div className="modal-bg" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div className="modal" style={{ ['--c' as any]: a.color }} initial={{ y: 30, scale: .97 }} animate={{ y: 0, scale: 1 }} exit={{ y: 30, opacity: 0 }} onClick={e => e.stopPropagation()}>
         <div className="m-h"><span className="ag-icon"><Svg d={ICONS[a.id]} size={34} /></span><div><div className="m-t">{a.id} · {a.name}</div><div className="m-s">{a.bg} — {a.role}</div></div><button className="x" onClick={onClose}>✕</button></div>
-        <div className="note warn">Статус: <b>{a.realStatus}</b>. Ботът съществува. Задачите тук са реални записи в опашката на таблото (бекенд), но <b>още не се изпращат автоматично към бота</b>: управлението е ръчно.</div>
+        <div className="note warn">Статус на бота: <b>{a.realStatus}</b>. {st.dispatch?.webhookConfigured ? 'Одобрените задачи се изпращат към JARVIS OMEGA, а статусът по-долу идва от отчета на бота.' : 'Изпращането към ботовете не е настроено.'}</div>
         <div className="m-grid">
           <div className="m-box"><h4>Текуща задача</h4>{cur ? <><b>{cur.demo && <Demo />} {cur.title}</b><p>{cur.description || '—'}</p><p>Статус: {STATUS_BG[cur.status]} · {cur.progress}%</p></> : <p className="muted">Няма</p>}</div>
           <div className="m-box"><h4>Входни данни</h4><p className="muted">{a.id === '01' ? 'LIVE пазари (Yahoo Finance, Binance) и RSS новини през бекенда на таблото' : 'Получава от предишния агент в потока'}</p></div>
@@ -343,7 +350,7 @@ function AgentModal({ a, st, onClose, onErr }: { a: Agent; st: State; onClose: (
           <div className="m-box"><h4>Последна активност</h4>{evs.length ? evs.slice(0, 6).map(e => <p key={e.id}>{fmtTime(e.ts)} {e.msg} {e.demo && <Demo />}</p>) : <p className="muted">Няма</p>}</div>
         </div>
         <h4>Задачи ({tasks.length})</h4>
-        <div className="tlist">{tasks.slice().reverse().map(t => <TaskRow key={t.id} t={t} agents={st.agents} onErr={onErr} />)}</div>
+        <div className="tlist">{tasks.slice().reverse().map(t => <TaskRow key={t.id} t={t} agents={st.agents} onErr={onErr} hook={st.dispatch?.webhookConfigured} />)}</div>
         <h4>Възложи нова задача</h4>
         <NewTask agents={st.agents} defAgent={a.id} onErr={onErr} />
       </motion.div>
@@ -424,7 +431,7 @@ export default function App() {
   });
   const [voiceOut, setVoiceOut] = useState(false);
   const [notif, setNotif] = useState<string>(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-  const [msgs, setMsgs] = useState<Msg[]>([{ who: 'j', text: 'Здравей, Георг. Аз съм JARVIS. Пазарите и новините са LIVE, агентите се управляват ръчно. Пиши или говори на български.' }]);
+  const [msgs, setMsgs] = useState<Msg[]>([{ who: 'j', text: 'Здравей, Георг. Аз съм JARVIS. Пазарите и новините са LIVE, задачите се одобряват от теб. Пиши или говори на български.' }]);
   const mobile = useIsMobile();
   const now = useClock();
   const voiceRef = useRef(voiceOut); voiceRef.current = voiceOut;
@@ -455,7 +462,7 @@ export default function App() {
           setAlertEv(ev); setTimeout(() => setAlertEv(a => (a?.id === ev.id ? null : a)), 9000);
           if (notifRef.current === 'granted') try { new Notification((ev.demo ? 'ИЗВЪНРЕДНО (DEMO): ' : 'ИЗВЪНРЕДНО: ') + ev.msg, { body: `${ev.source} · ${ev.instruments?.join(', ')}`, tag: 'jarvis-news' }); } catch {}
           if (voiceRef.current) speak((ev.demo ? 'Извънредна новина, демо: ' : 'Извънредна новина: ') + ev.msg);
-        } else if (ev.type === 'task_failed') toast(ev.msg, 'err');
+        } else if (ev.type === 'task_failed' || ev.type === 'dispatch_failed') toast(ev.msg, 'err');
         else if (ev.type === 'approval_needed') toast(ev.msg + ' (DEMO)', 'warn');
         else if (!['demo_on', 'demo_off'].includes(ev.type)) toast(ev.msg + (ev.demo ? ' (DEMO)' : ''), 'info');
       });
@@ -467,9 +474,10 @@ export default function App() {
   }, [toast]);
 
   const tasks = st?.tasks || [];
-  const activeIds = useMemo(() => new Set(tasks.filter(t => t.status === 'running').map(t => t.agentId)), [tasks]);
+  const activeIds = useMemo(() => new Set(tasks.filter(t => ['running', 'dispatched'].includes(t.status)).map(t => t.agentId)), [tasks]);
   const mktLive = !!(st?.markets && (st.markets.sources.yahoo?.ok || st.markets.sources.binance?.ok));
   const newsLive = !!(st?.news && Object.values(st.news.sources).some((v: any) => v.ok));
+  const hookOn = !!st?.dispatch?.webhookConfigured;
   const failedIds = useMemo(() => new Set(tasks.filter(t => t.status === 'failed').map(t => t.agentId)), [tasks]);
   const alerts = (st?.events || []).filter(e => e.type === 'news_alert');
   const sys = st?.system;
@@ -477,8 +485,8 @@ export default function App() {
   const readiness = sys ? Math.round(((sys.connected.length + sys.partial.length * 0.5 + (mktLive ? 1 : 0) + (newsLive ? 1 : 0)) / (totalInt + 2)) * 100) : 0;
   const cnt = (f: (t: Task) => boolean) => { const a = tasks.filter(f); return [a.length, a.filter(t => t.demo).length]; };
   const C = {
-    active: cnt(t => ['running', 'queued', 'approved'].includes(t.status)), wait: cnt(t => t.status === 'awaiting_approval'),
-    done: cnt(t => t.status === 'done'), err: cnt(t => t.status === 'failed'), paused: cnt(t => t.status === 'paused'),
+    active: cnt(t => ['running', 'approved', 'dispatched'].includes(t.status)), wait: cnt(t => ['awaiting_approval', 'pending', 'queued'].includes(t.status)),
+    done: cnt(t => t.status === 'done'), err: cnt(t => ['failed', 'blocked'].includes(t.status) || !!t.dispatchError), paused: cnt(t => t.status === 'paused'),
   };
   const err = (s: string) => toast('Грешка: ' + s, 'err');
 
@@ -492,7 +500,7 @@ export default function App() {
       case 'agents': {
         const run = tasks.filter(t => t.status === 'running');
         setView('agents');
-        reply(`Седемте агента са готови и без задача (реален статус). ${run.length ? `В DEMO симулацията работят: ${run.map(t => t.agentId + ' ' + t.title.replace('DEMO: ', '')).join('; ')}.` : 'Няма активни задачи.'} Задачи в опашката на таблото: ${tasks.filter(t => !t.demo).length} (не се изпращат автоматично към ботовете).`);
+        reply(`Седемте агента са готови и без задача (реален статус). ${run.length ? `В DEMO симулацията работят: ${run.map(t => t.agentId + ' ' + t.title.replace('DEMO: ', '')).join('; ')}.` : 'Няма активни задачи.'} Задачи: ${tasks.filter(t => !t.demo).length} (${tasks.filter(t => !t.demo && ['dispatched', 'running'].includes(t.status)).length} при ботовете).`);
         break;
       }
       case 'markets': { setView('markets'); const mi = st?.markets?.items || {}; const f = (k: string) => mi[k]?.ok ? `${k} ${mi[k].price.toLocaleString('en-US', { maximumFractionDigits: mi[k].d })}` : `${k} няма източник`; reply(`Пазари (LIVE): ${['XAUUSD', 'NAS100', 'US30', 'BTCUSD', 'ETHUSD'].map(f).join(', ')}.`); break; }
@@ -507,7 +515,7 @@ export default function App() {
       case 'focus': setFocus(f => { reply(!f ? 'Фокус режим активиран.' : 'Фокус режим изключен.'); return !f; }); break;
       case 'create': {
         if (!it.arg) { reply('Кажи заглавие, напр. „създай задача сценарий за златото“.'); break; }
-        try { await api.create(it.arg, '06'); reply(`Създадох задача „${it.arg}“ за DIRECTOR CONTROL в опашката на таблото. Не се изпраща автоматично към бота.`); } catch (e: any) { reply('Грешка: ' + e.message); }
+        try { await api.create(it.arg, '06'); reply(`Създадох задача „${it.arg}“ за DIRECTOR CONTROL. Чака твоето одобрение.`); } catch (e: any) { reply('Грешка: ' + e.message); }
         break;
       }
       case 'demo_on': await api.demo(true); reply('Включих DEMO симулацията.'); break;
@@ -527,11 +535,11 @@ export default function App() {
     const title = NAV.find(n => n[0] === view)?.[1] || (view === 'news' ? 'Новини' : '');
     let body: any = null;
     if (view === 'agents') body = <div className="dlist">{agents.map(a => { const n = tasks.filter(t => t.agentId === a.id && !['done', 'stopped'].includes(t.status)); return <button key={a.id} className="drow" style={{ ['--c' as any]: a.color }} onClick={() => setOpenAgent(a.id)}><b>{a.id} {a.name}</b><span>{a.realStatus}</span><span>{n.length} активни ({n.filter(t => t.demo).length} DEMO)</span></button>; })}</div>;
-    if (view === 'tasks') body = <><div className="note">Това е опашката със задачи на таблото (бекенд, data/state.json). Бутоните реално променят статуса им. Още не се изпращат автоматично към седемте бота: управлението е ръчно.</div><NewTask agents={agents} onErr={err} /><div className="tlist">{tasks.slice().reverse().map(t => <TaskRow key={t.id} t={t} agents={agents} onErr={err} />)}{!tasks.length && <p className="muted">Няма задачи. Създай първата.</p>}</div></>;
+    if (view === 'tasks') body = <><div className="note">{hookOn ? 'Одобрените задачи се изпращат към JARVIS OMEGA. Статусите („изпратена“, „изпълнява се“, „готова“, „блокирана“) идват от отчетите на ботовете.' : 'Изпращането към ботовете не е настроено.'} Записът изисква ключ за достъп.</div><NewTask agents={agents} onErr={err} /><div className="tlist">{tasks.slice().reverse().map(t => <TaskRow key={t.id} t={t} agents={agents} onErr={err} hook={hookOn} />)}{!tasks.length && <p className="muted">Няма задачи. Създай първата.</p>}</div></>;
     if (view === 'markets') body = <Markets m={st.markets} big />;
     if (view === 'news') body = <News n={st?.news} alerts={alerts} />;
     if (view === 'content') body = <><Content tasks={tasks} /><h4>Готови материали</h4>{tasks.flatMap(t => t.outputs.map(o => <p key={t.id + o}>{o}</p>))}{!tasks.some(t => t.outputs.length) && <p className="muted">Няма готови материали.</p>}</>;
-    if (view === 'publishing') body = <><Social tasks={tasks} system={sys} /><h4>Чакат одобрение</h4><div className="tlist">{tasks.filter(t => ['awaiting_approval', 'approved'].includes(t.status)).map(t => <TaskRow key={t.id} t={t} agents={agents} onErr={err} />)}</div></>;
+    if (view === 'publishing') body = <><Social tasks={tasks} system={sys} /><h4>Чакат одобрение</h4><div className="tlist">{tasks.filter(t => ['awaiting_approval', 'pending', 'queued', 'approved'].includes(t.status)).map(t => <TaskRow key={t.id} t={t} agents={agents} onErr={err} hook={hookOn} />)}</div></>;
     if (view === 'brands') body = <Brands />;
     if (view === 'automations') body = <><div className="note">Няма създадени автоматизации или рутини. Автоматично публикуване: <b className="off">ИЗКЛ</b>.</div><label className="sw"><input type="checkbox" checked={st.demoMode} onChange={e => api.demo(e.target.checked)} /> DEMO РЕЖИМ (симулация на поток през API)</label><button className="btn" disabled={!st.demoMode} onClick={() => api.demoNews().catch(e => err(e.message))}>Пусни DEMO извънредна новина</button></>;
     if (view === 'analytics') body = <div className="log">{st.events.slice().reverse().map(e => <p key={e.id}><span className="muted">{fmtTime(e.ts)}</span> {e.demo && <Demo />} {e.msg}</p>)}{!st.events.length && <p className="muted">Още няма събития.</p>}</div>;
@@ -542,6 +550,8 @@ export default function App() {
       {sys.needsSignIn.map((n: string) => <p key={n}><span className="dot y" />{n} — чака вход</p>)}
       {sys.notConnected.map((n: string) => <p key={n}><span className="dot r" />{n} — не е свързан</p>)}
       <h4>Данни (без ключ, без регистрация)</h4>{st.markets && Object.entries(st.markets.sources).map(([k, v]: any) => <p key={k}><span className={`dot ${v.ok ? 'g' : 'r'}`} />{k === 'yahoo' ? 'Yahoo Finance' : 'Binance / CoinGecko'} — {v.ok ? 'LIVE' : 'грешка'} {v.error && <em className="muted">({v.error})</em>}</p>)}{st.news && Object.entries(st.news.sources).map(([k, v]: any) => <p key={k}><span className={`dot ${v.ok ? 'g' : 'r'}`} />{k} RSS — {v.ok ? `LIVE (${v.count})` : 'грешка: ' + v.error}</p>)}
+      <h4>Достъп</h4><p>Ключ за запис: {getKey() ? 'запазен в този браузър' : 'не е въведен'} {getKey() && <button className="btn" onClick={() => { clearKey(); toast('Ключът е изтрит от браузъра'); }}>Изтрий ключа</button>}</p>
+      <p>Изпращане към ботовете: {hookOn ? 'настроено (JARVIS_WEBHOOK_URL)' : 'не е настроено'}</p>
       <h4>Интерфейс</h4>
       <label className="sw"><input type="checkbox" checked={reduced} onChange={e => setReduced(e.target.checked)} /> Намалено движение</label>
       <label className="sw"><input type="checkbox" checked={quality > 1} onChange={e => setQuality(e.target.checked ? 2 : 1)} /> Високо качество на 3D</label>
@@ -568,7 +578,7 @@ export default function App() {
           <div className="clock"><b>{fmtTime(now)}</b><span>{fmtDate(now)} · Берлин</span></div>
           <div className="pills">
             <span className={`pill ${conn}`}><i />{conn === 'ok' ? 'Бекенд свързан' : conn === 'down' ? 'Няма връзка' : 'Свързване…'}</span>
-            <span className={`pill ${mktLive ? 'livep' : ''}`}>{mktLive ? 'ПАЗАРИ LIVE' : 'ПАЗАРИ: НЯМА'} · {newsLive ? 'НОВИНИ LIVE' : 'НОВИНИ: НЯМА'} · АГЕНТИ: РЪЧНО</span>
+            <span className={`pill ${mktLive ? 'livep' : ''}`}>{mktLive ? 'ПАЗАРИ LIVE' : 'ПАЗАРИ: НЯМА'} · {newsLive ? 'НОВИНИ LIVE' : 'НОВИНИ: НЯМА'} · {hookOn ? 'ИЗПРАЩАНЕ: ВКЛ' : 'ИЗПРАЩАНЕ: НЕ Е НАСТРОЕНО'}</span>
             {st?.demoMode && <span className="pill demo">DEMO СИМУЛАЦИЯ ВКЛ</span>}
             <span className="pill"><i className="y" />Свързани услуги {sys ? `${sys.connected.length}+X / ${totalInt}` : '…'}</span>
             <button className={`pill btnp ${notif === 'granted' ? 'on' : ''}`} onClick={reqNotif} title="Известия за извънредни новини">🔔 {notif === 'granted' ? 'Вкл' : 'Известия'}</button>
@@ -622,7 +632,7 @@ export default function App() {
             <Gauge value={readiness} label="готовност на интеграциите" />
             <div className="hlist">
               <p><span className={`dot ${conn === 'ok' ? 'g' : 'r'}`} />Бекенд и поток (SSE): {conn === 'ok' ? 'онлайн' : 'няма връзка'}</p>
-              <p><span className="dot g" />Агенти: 7 / 7 готови · изпращане: ръчно</p>
+              <p><span className={`dot ${hookOn ? 'g' : 'y'}`} />Агенти: 7 / 7 · изпращане: {hookOn ? 'настроено' : 'не е настроено'}</p>
               <p><span className="dot g" />Авто-публикуване: ИЗКЛ</p>
               <p><span className={`dot ${mktLive ? 'g' : 'r'}`} />Пазари: {mktLive ? 'LIVE' : 'няма'} · <span className={`dot ${newsLive ? 'g' : 'r'}`} />Новини: {newsLive ? 'LIVE' : 'няма'}</p>
             </div>
