@@ -17,10 +17,24 @@ cloudflared tunnel --url http://localhost:8787
 - Start: `node server.js` (слуша на `process.env.PORT`, 0.0.0.0)
 - Състоянието (`data/state.json`) се създава при старт; на безплатния план дискът е временен и опашката се нулира при рестарт.
 
+## Достъп и изпращане към ботовете
+Всички записи (POST/PATCH/DELETE под /api) изискват `X-Jarvis-Key: <JARVIS_ADMIN_KEY>`. Четенето е публично.
+
+Env променливи на Render:
+- `JARVIS_ADMIN_KEY` ключ за запис (задължителен, иначе записът е изключен)
+- `JARVIS_WEBHOOK_URL` webhook на рутината на JARVIS OMEGA (празно = изпращането не е настроено)
+- `JARVIS_WEBHOOK_KEY` ключ за webhook-а; праща се като `Authorization: Bearer <key>` и `X-Webhook-Key: <key>`
+
+Поток: pending -> approved -> (webhook) dispatched -> running -> done | blocked (+ paused / stopped).
+При одобрение сървърът POST-ва `{id, agent, agentName, title, description, status, approvedAt}` към webhook-а (3 опита: 1 с, 3 с).
+
 ## API
+- `PATCH /api/tasks/:id/status` `{status, note, result, botName}` статус от бота (pending|approved|dispatched|running|done|blocked|paused|stopped)
+- `POST /api/tasks/:id/redispatch` изпраща отново
+- `GET /api/export`, `POST /api/import` `{tasks:[...]}` резервно копие / възстановяване (запазва id и статус; съществуващи id се пропускат)
 - `GET /api/state` пълно състояние (агенти, задачи, събития, пазари, новини)
 - `GET /api/markets`, `GET /api/news`, `GET /api/health`
-- `POST /api/tasks` `{title, agentId, description}`
+- `POST /api/tasks` `{title, agentId, description, status?: 'approved'}`
 - `POST /api/tasks/:id/{approve|pause|resume|stop}`, `DELETE /api/tasks/:id`
 - `POST /api/demo` `{on:true|false}` DEMO симулация (по подразбиране изключена), `POST /api/demo/news`
 - `GET /api/events` Server-Sent Events (`state`, `event`, `ping`)
@@ -33,3 +47,5 @@ cloudflared tunnel --url http://localhost:8787
 
 Задачите са записи в опашката на таблото (`data/state.json`). Не се изпращат автоматично към ботовете.
 Скрийншоти: `node shoot.mjs` -> `shots/`.
+
+Безплатният диск на Render е временен: след рестарт възстанови с `POST /api/import` от `GET /api/export`. Отдалечен backup (GITHUB_BACKUP) не е включен.
