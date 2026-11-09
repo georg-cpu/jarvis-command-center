@@ -50,7 +50,7 @@ function LatLon() {
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); return g;
   }, []);
-  return <lineSegments geometry={geo}><lineBasicMaterial color="#1a6dff" transparent opacity={0.22} /></lineSegments>;
+  return <lineSegments geometry={geo}><lineBasicMaterial color="#1a6dff" transparent opacity={0.12} /></lineSegments>;
 }
 
 function Ring({ r, tilt, speed, color, dots = 3 }: any) {
@@ -106,7 +106,7 @@ function Earth({ quality, pulse, alert }: { quality: number; pulse: number; aler
       <group ref={g} rotation={[0.35, 0, 0.1]}>
         <mesh><sphereGeometry args={[0.985, 48, 48]} /><meshBasicMaterial color="#020b1f" transparent opacity={0.92} /></mesh>
         <LatLon />
-        {pgeo && <points geometry={pgeo}><pointsMaterial color={alert ? '#ff5a4a' : '#3fb8ff'} size={0.022} sizeAttenuation transparent opacity={0.95} /></points>}
+        {pgeo && <points geometry={pgeo}><pointsMaterial color={alert ? '#ff5a4a' : '#3fb8ff'} size={0.034} sizeAttenuation transparent opacity={1} /></points>}
       </group>
       <mesh><sphereGeometry args={[1.06, 48, 48]} /><meshBasicMaterial color="#1e7dff" transparent opacity={0.07} side={THREE.BackSide} /></mesh>
       <Ring r={1.35} tilt={[0.25, 0, 0.18]} speed={0.4} color="#22e4ff" />
