@@ -579,6 +579,10 @@ export default function App() {
           <div className="pills">
             <span className={`pill ${conn}`}><i />{conn === 'ok' ? 'Бекенд свързан' : conn === 'down' ? 'Няма връзка' : 'Свързване…'}</span>
             <span className={`pill ${mktLive ? 'livep' : ''}`}>{mktLive ? 'ПАЗАРИ LIVE' : 'ПАЗАРИ: НЯМА'} · {newsLive ? 'НОВИНИ LIVE' : 'НОВИНИ: НЯМА'} · {hookOn ? 'ИЗПРАЩАНЕ: ВКЛ' : 'ИЗПРАЩАНЕ: НЕ Е НАСТРОЕНО'}</span>
+            {st?.storage && (() => { const g = st.storage!; const fmt = (x?: string | null) => x ? new Date(x).toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : '—';
+              const label = g.mode === 'github' ? (g.lastSaveOk === false ? 'Хранилище: GitHub ✗' : 'Хранилище: GitHub ✓') : g.configured ? 'Хранилище: локално (GitHub грешка)' : 'Хранилище: локално (губи се при рестарт)';
+              const tip = g.mode === 'github' ? `${g.repo}/${g.path} · последен запис: ${fmt(g.lastSaveAt)}${g.pending ? ' · записва…' : ''}${g.lastError ? ' · ' + g.lastError : ''}` : (g.lastError || 'Задачите се пазят само на сървъра и се губят при рестарт');
+              return <span className={`pill stor ${g.mode === 'github' && g.lastSaveOk !== false ? 'ok' : 'warnp'}`} title={tip}>{label}</span>; })()}
             {st?.demoMode && <span className="pill demo">DEMO СИМУЛАЦИЯ ВКЛ</span>}
             <span className="pill"><i className="y" />Свързани услуги {sys ? `${sys.connected.length}+X / ${totalInt}` : '…'}</span>
             <button className={`pill btnp ${notif === 'granted' ? 'on' : ''}`} onClick={reqNotif} title="Известия за извънредни новини">🔔 {notif === 'granted' ? 'Вкл' : 'Известия'}</button>

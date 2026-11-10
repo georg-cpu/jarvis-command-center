@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { cache, pollYahoo, pollCrypto, pollNews, MARKET_ORDER } from './feeds.js';
+import * as store from './storage.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8787;
@@ -39,7 +40,28 @@ try { db = JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch { db = fresh(); }
 db.demoMode = false; // never resume demo automatically after restart
 db.tasks = db.tasks.filter(t => !t.demo);
 db.events = db.events.filter(e => !e.demo);
-function save() { fs.mkdirSync(path.dirname(DATA), { recursive: true }); fs.writeFileSync(DATA, JSON.stringify(db, null, 1)); }
+function save() { fs.mkdirSync(path.dirname(DATA), { recursive: true }); fs.writeFileSync(DATA, JSON.stringify(db, null, 1)); store.schedule(); }
+store.init(() => ({ seq: db.seq, tasks: db.tasks.filter(t => !t.demo) }));
+function mergeRemote(remote) {
+  if (!remote) return;
+  const local = db.tasks.filter(t => !t.demo);
+  const byId = new Map(remote.tasks.filter(t => t && t.id && !t.demo).map(t => [t.id, t]));
+  let seq = Math.max(db.seq, remote.seq || 0, ...[...byId.keys()].map(id => +String(id).slice(1) || 0).map(n => n + 1));
+  for (const t of local) {
+    const r = byId.get(t.id);
+    if (!r) byId.set(t.id, t);
+    else if (r.createdAt !== t.createdAt) { const id = 'T' + (seq++); byId.set(id, { ...t, id }); }
+  }
+  db.tasks = [...byId.values()];
+  db.seq = seq;
+}
+async function initStorage() {
+  const remote = await store.load();
+  if (remote) { mergeRemote(remote); fs.writeFileSync(DATA, JSON.stringify(db, null, 1)); store.schedule(); console.log(`storage: github ${store.status.repo}/${store.status.path}, tasks ${db.tasks.length}`); }
+  else if (store.status.configured) { console.log('storage: github configured but load failed -> local; retry in 60s'); setTimeout(initStorage, 60000); }
+  else console.log('storage: local (GITHUB_TOKEN not set)');
+  broadcast('state', snapshot());
+}
 save();
 
 const clients = new Set();
@@ -49,6 +71,7 @@ const ADMIN_KEY = () => (process.env.JARVIS_ADMIN_KEY || '').trim();
 function snapshot() {
   return {
     dispatch: { webhookConfigured: !!WEBHOOK_URL(), adminKeyConfigured: !!ADMIN_KEY() },
+    storage: store.view(),
     agents: AGENTS.map(a => {
       const mine = db.tasks.filter(t => !t.demo && t.agentId === a.id);
       const st = mine.some(t => ['dispatched', 'running'].includes(t.status)) ? 'РАБОТИ' : mine.some(t => t.status === 'blocked') ? 'БЛОКИРАН' : mine.some(t => ['approved', 'pending', 'queued'].includes(t.status)) ? 'ИМА ЗАДАЧИ' : 'ГОТОВ / БЕЗ ЗАДАЧА';
@@ -176,7 +199,7 @@ app.post('/api/tasks/:id/redispatch', async (req, res) => {
   const r = await dispatch(t, true);
   res.json({ ok: r.ok, http: r.http || null, error: r.error || null, task: t });
 });
-// Note: no GitHub/remote backup is configured (GITHUB_BACKUP unset -> skipped). Restore with POST /api/import.
+// Persistent store: see storage.js (GITHUB_TOKEN + GITHUB_DATA_REPO + GITHUB_DATA_PATH). Manual restore: POST /api/import.
 // ---------- import / export (restore after free-instance restarts) ----------
 app.get('/api/export', (_req, res) => res.json({ exportedAt: new Date().toISOString(), tasks: db.tasks.filter(t => !t.demo) }));
 app.post('/api/import', (req, res) => {
@@ -370,4 +393,5 @@ loop(() => pollNews(x => emit({ type: 'news_alert', demo: false, agentId: '01', 
 
 app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1h', index: false }));
 app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+initStorage();
 app.listen(PORT, '0.0.0.0', () => console.log(`JARVIS backend listening on 0.0.0.0:${PORT}`));
