@@ -20,7 +20,12 @@ const clean = e => String(e && e.message || e).replace(TOKEN() || '\u0000', '***
 
 async function fetchFile() {
   const r = await fetch(url() + (BRANCH() ? `?ref=${encodeURIComponent(BRANCH())}` : ''), { headers: headers(), signal: AbortSignal.timeout(15000) });
-  if (r.status === 404) return { sha: null, data: null };
+  if (r.status === 404) {
+    // 404 can mean "file missing" OR "token has no access to the repo" -> probe the repo itself.
+    const rr = await fetch(`${API()}/repos/${REPO()}`, { headers: headers(), signal: AbortSignal.timeout(15000) });
+    if (!rr.ok) throw new Error(`GitHub няма достъп до репото ${REPO()} (HTTP ${rr.status}) — токенът трябва да включва това репо`);
+    return { sha: null, data: null };
+  }
   if (!r.ok) throw new Error(`GitHub GET HTTP ${r.status}`);
   const j = await r.json();
   const text = Buffer.from(j.content || '', 'base64').toString('utf8');
