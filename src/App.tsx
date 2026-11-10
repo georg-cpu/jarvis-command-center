@@ -652,7 +652,7 @@ export default function App() {
           </div>
           <button className="btn wide" onClick={() => setView('tasks')}>Управление на задачите →</button>
         </Panel>
-        <Panel title="JARVIS КОМАНДИ" accent="#22e4ff" defaultOpen className="b-cmd"><CommandBox onCommand={onCommand} msgs={msgs} /></Panel>
+        <Panel title="JARVIS КОМАНДИ" accent="#22e4ff" defaultOpen className="b-cmd"><CommandBox onCommand={onCommand} msgs={msgs} /><details><summary>☕ Почерпи ме с кафе</summary><p>Доброволна подкрепа с native SOL · Solana mainnet</p><code style={{overflowWrap:"anywhere",userSelect:"all"}}>CYmGyR3E2rEheJiG48t9LNPjCU9dxGG6sBeUh9mJB9Fy</code></details></Panel>
       </section>
 
       {!mobile && !view3d && <LinkOverlay pulses={pulses} active={activeIds} failed={failedIds} />}

@@ -1,5 +1,17 @@
 # JARVIS OMEGA — Command Center
 
+Командно табло за задачи, агенти, пазарни котировки и новини. Промените достигат до браузъра през Server-Sent Events. Одобрена задача може да се изпрати към бот чрез настроен webhook.
+
+[Изтегли проекта като ZIP](https://github.com/georg-cpu/jarvis-command-center/archive/refs/heads/main.zip) · [Виж изходния код](https://github.com/georg-cpu/jarvis-command-center/tree/main)
+
+## ☕ Почерпи ме с кафе
+
+Доброволна подкрепа с **native SOL** в мрежата **Solana mainnet**. Копирай публичния адрес в своя портфейл.
+
+`CYmGyR3E2rEheJiG48t9LNPjCU9dxGG6sBeUh9mJB9Fy`
+
+[Виж адреса в Solana Explorer](https://explorer.solana.com/address/CYmGyR3E2rEheJiG48t9LNPjCU9dxGG6sBeUh9mJB9Fy)
+
 Vite + React + TypeScript + Three.js (@react-three/fiber) + Framer Motion, малък Express бекенд със SSE.
 
 ## Пускане
@@ -45,8 +57,7 @@ Env променливи на Render:
 - RSS, на всеки 3 мин: CNBC Top News, CNBC Economy, FXStreet, Investing.com (общи, Forex, Commodities), MarketWatch.
   „Важно/извънредно“ = правила с ключови думи; известие (SSE + Notification API) само за нови такива.
 
-Задачите са записи в опашката на таблото (`data/state.json`). Не се изпращат автоматично към ботовете.
-Скрийншоти: `node shoot.mjs` -> `shots/`.
+Задачите са записи в опашката на таблото (`data/state.json`). Одобрението задейства изпращане само при настроен webhook.
 
 Безплатният диск на Render е временен: задачите се пазят в частното репо jarvis-data, когато е зададен GITHUB_TOKEN (виж по-долу). Ръчно възстановяване: `POST /api/import` от `GET /api/export`.
 
@@ -61,3 +72,32 @@ If `GITHUB_TOKEN` is set, the server loads tasks on startup from a file in a **p
 | `GITHUB_DATA_BRANCH` | repo default | optional |
 
 Without a token or on GitHub errors the app falls back to the local JSON file (lost on Render restarts). `/api/state` → `storage: {mode: 'github'|'local', lastLoadOk, lastSaveOk, lastSaveAt, lastError, ...}`; the header shows `Хранилище: GitHub ✓` or `Хранилище: локално (губи се при рестарт)`. If the initial load fails, the server never overwrites the remote file and retries loading every 60 s.
+
+## Файлове в проекта
+
+| Файл | Предназначение |
+|---|---|
+| [.gitignore](./.gitignore) | Изключения за локални файлове |
+| [README.md](./README.md) | Описание, стартиране и навигация |
+| [feeds.js](./feeds.js) | Пазарни котировки и новинарски потоци |
+| [index.html](./index.html) | Входна HTML страница |
+| [package-lock.json](./package-lock.json) | Фиксирани версии на зависимостите |
+| [package.json](./package.json) | Команди и зависимости |
+| [server.js](./server.js) | HTTP API, опашка със задачи и SSE |
+| [src/App.tsx](./src/App.tsx) | Основен интерфейс и контроли |
+| [src/Globe.tsx](./src/Globe.tsx) | Триизмерен глобус |
+| [src/Workflow3D.tsx](./src/Workflow3D.tsx) | Триизмерен изглед на работния процес |
+| [src/api.ts](./src/api.ts) | Клиент за API на таблото |
+| [src/assets.ts](./src/assets.ts) | Ресурси за интерфейса |
+| [src/main.tsx](./src/main.tsx) | Стартиране на React |
+| [src/styles.css](./src/styles.css) | Стилове на таблото |
+| [src/voice.ts](./src/voice.ts) | Гласови функции |
+| [storage.js](./storage.js) | Съхранение и възстановяване на задачи |
+| [tsconfig.json](./tsconfig.json) | Настройки на TypeScript |
+| [vite.config.ts](./vite.config.ts) | Конфигурация на Vite |
+
+## Други публични проекти на JARVIS
+
+- [jarvis-solana-scanner](https://github.com/georg-cpu/jarvis-solana-scanner)
+- [jarvis-solana-intelligence](https://github.com/georg-cpu/jarvis-solana-intelligence)
+- [jarvis-solana-intelligence1](https://github.com/georg-cpu/jarvis-solana-intelligence1)
