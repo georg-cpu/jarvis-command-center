@@ -48,4 +48,16 @@ Env променливи на Render:
 Задачите са записи в опашката на таблото (`data/state.json`). Не се изпращат автоматично към ботовете.
 Скрийншоти: `node shoot.mjs` -> `shots/`.
 
-Безплатният диск на Render е временен: след рестарт възстанови с `POST /api/import` от `GET /api/export`. Отдалечен backup (GITHUB_BACKUP) не е включен.
+Безплатният диск на Render е временен: задачите се пазят в частното репо jarvis-data, когато е зададен GITHUB_TOKEN (виж по-долу). Ръчно възстановяване: `POST /api/import` от `GET /api/export`.
+
+## Persistent task storage (GitHub, optional, free)
+If `GITHUB_TOKEN` is set, the server loads tasks on startup from a file in a **private** repo via the GitHub Contents API and saves back after every change (debounced ~3 s, uses the file `sha`, refetches the sha and retries on 409/422 conflicts).
+
+| Env var | Default | Notes |
+|---|---|---|
+| `GITHUB_TOKEN` | — | Fine-grained token, only repo `jarvis-data`, *Contents: Read and write*. Never logged. |
+| `GITHUB_DATA_REPO` | `georg-cpu/jarvis-data` | `owner/repo` |
+| `GITHUB_DATA_PATH` | `tasks.json` | file path in the repo |
+| `GITHUB_DATA_BRANCH` | repo default | optional |
+
+Without a token or on GitHub errors the app falls back to the local JSON file (lost on Render restarts). `/api/state` → `storage: {mode: 'github'|'local', lastLoadOk, lastSaveOk, lastSaveAt, lastError, ...}`; the header shows `Хранилище: GitHub ✓` or `Хранилище: локално (губи се при рестарт)`. If the initial load fails, the server never overwrites the remote file and retries loading every 60 s.

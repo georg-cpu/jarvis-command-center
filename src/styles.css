@@ -232,3 +232,6 @@ a.nitem{display:block;color:inherit;text-decoration:none}a.nitem:hover{backgroun
 .tresult{font-size:11px;margin:4px 0;padding:6px 8px;border-radius:8px;background:rgba(32,224,138,.08);border:1px solid rgba(32,224,138,.3);white-space:pre-wrap;max-height:160px;overflow:auto}
 .tlog{font-size:10.5px;max-height:180px;overflow:auto;margin:4px 0;padding:4px 8px;background:rgba(0,0,0,.35);border-radius:8px}.tlog p{margin:2px 0}
 .st-pending,.st-queued{color:#ffd76a}.st-dispatched{color:#9fd2ff;background:rgba(61,123,255,.25)}.st-blocked{color:#fff;background:#b3261e}
+.pill.stor{font-size:10px;opacity:.75;letter-spacing:.04em}
+.pill.stor.ok{color:#7dffb0;border-color:rgba(125,255,176,.35)}
+.pill.stor.warnp{color:#ffcf6b;border-color:rgba(255,207,107,.35)}
